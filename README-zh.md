@@ -23,6 +23,16 @@ AGS CLI 是一个用于管理腾讯云智能体沙箱（AGS）的命令行工具
 go install github.com/TencentCloudAgentRuntime/ags-cli@latest
 ```
 
+**注意**：安装后的命令名为 `ags-cli`。如果您希望使用 `ags` 作为命令名，可以创建一个别名：
+
+```bash
+# 添加到您的 shell 配置文件中（~/.zshrc、~/.bashrc 等）
+alias ags='ags-cli'
+
+# 重新加载 shell 配置
+source ~/.zshrc  # 或 source ~/.bashrc
+```
+
 ### 从源码编译
 
 ```bash

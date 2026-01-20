@@ -3,7 +3,6 @@ package client
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"time"
 
 	"github.com/TencentCloudAgentRuntime/ags-cli/internal/config"
@@ -13,13 +12,13 @@ import (
 	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/profile"
 )
 
-// CloudInstanceClient handles Instance operations using tencentcloud-sdk-go
+// CloudInstanceClient handles Instance control plane operations using tencentcloud-sdk-go.
+// Data plane operations are handled by ags-go-sdk via the cmd layer.
 type CloudInstanceClient struct {
 	client          *ags.Client
 	cfg             *config.CloudConfig
 	region          string
 	dataPlaneDomain string
-	dataPlane       *DataPlaneClient
 }
 
 // NewCloudInstanceClient creates a new Cloud Instance client
@@ -38,7 +37,6 @@ func NewCloudInstanceClient(cfg *config.CloudConfig) (*CloudInstanceClient, erro
 		cfg:             cfg,
 		region:          cfg.Region,
 		dataPlaneDomain: cfg.DataPlaneDomain(),
-		dataPlane:       NewDataPlaneClient(&http.Client{Timeout: 60 * time.Second}),
 	}, nil
 }
 
@@ -269,32 +267,18 @@ func (c *CloudInstanceClient) DeleteInstance(ctx context.Context, id string) err
 	return nil
 }
 
-// Execute runs code in a sandbox instance
-func (c *CloudInstanceClient) Execute(ctx context.Context, instanceID string, codeStr string, language string) (*ExecuteResult, error) {
-	return c.ExecuteStream(ctx, instanceID, codeStr, language, nil)
-}
-
-// ExecuteStream runs code with streaming output callbacks via data plane HTTP API
-func (c *CloudInstanceClient) ExecuteStream(ctx context.Context, instanceID string, codeStr string, language string, callbacks *StreamCallbacks) (*ExecuteResult, error) {
-	// Acquire token using public SDK
+// AcquireToken acquires an access token for data plane operations.
+// The token is used to authenticate with the E2B data plane gateway.
+func (c *CloudInstanceClient) AcquireToken(ctx context.Context, instanceID string) (string, error) {
 	tokenResp, err := c.client.AcquireSandboxInstanceTokenWithContext(ctx, &ags.AcquireSandboxInstanceTokenRequest{
 		InstanceId: &instanceID,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to acquire token: %w", err)
+		return "", fmt.Errorf("failed to acquire token: %w", err)
 	}
 	if tokenResp.Response == nil || tokenResp.Response.Token == nil {
-		return nil, fmt.Errorf("no token returned from API")
+		return "", fmt.Errorf("no token returned from API")
 	}
 
-	// Build sandbox domain: {port}-{instanceID}.{region}.{dataPlaneDomain}
-	sandboxDomain := fmt.Sprintf("%d-%s.%s.%s", 49999, instanceID, c.region, c.dataPlaneDomain)
-
-	// Execute code via data plane
-	return c.dataPlane.ExecuteCode(ctx, &ExecuteCodeConfig{
-		Domain:      sandboxDomain,
-		AccessToken: *tokenResp.Response.Token,
-		Code:        codeStr,
-		Language:    language,
-	}, callbacks)
+	return *tokenResp.Response.Token, nil
 }

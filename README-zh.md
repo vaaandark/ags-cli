@@ -91,6 +91,21 @@ AGS CLI 支持两种后端，功能有所不同：
 
 如需管理沙箱工具（列出/获取/创建/更新/删除）和 API 密钥，必须使用**云端后端**，配置腾讯云的 SecretID 和 SecretKey。您可以在此获取 AKSK：https://console.cloud.tencent.com/cam/capi
 
+### 架构：控制面 vs 数据面
+
+AGS CLI 将操作分为两个层面：
+
+- **控制面**：实例生命周期管理（创建/删除/列表）、工具管理、API 密钥管理
+  - E2B 后端：使用 API Key + E2B REST API
+  - 云端后端：使用 AKSK + 腾讯云 API
+  
+- **数据面**：代码执行、Shell 命令、文件操作
+  - 两种后端都使用相同的 E2B 兼容数据面网关，通过 Access Token 认证
+
+`backend` 配置只影响控制面操作。数据面操作始终通过 `ags-go-sdk` 使用 E2B 协议。
+
+Access Token 在实例创建时自动缓存到 `~/.ags/tokens.json`，供后续数据面操作使用
+
 ## 快速开始
 
 ```bash

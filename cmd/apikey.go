@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/spf13/cobra"
 	"github.com/TencentCloudAgentRuntime/ags-cli/internal/client"
 	"github.com/TencentCloudAgentRuntime/ags-cli/internal/config"
 	"github.com/TencentCloudAgentRuntime/ags-cli/internal/output"
+	"github.com/spf13/cobra"
 )
 
 var (
@@ -33,7 +33,7 @@ Make sure to save it securely.`,
 			return fmt.Errorf("API key management is only supported with cloud backend")
 		}
 
-		apiClient, err := client.NewClient(config.GetBackend())
+		apiClient, err := client.NewControlPlaneClient(config.GetBackend())
 		if err != nil {
 			return fmt.Errorf("failed to create API client: %w", err)
 		}
@@ -75,7 +75,7 @@ var apikeyListCmd = &cobra.Command{
 			return fmt.Errorf("API key management is only supported with cloud backend")
 		}
 
-		apiClient, err := client.NewClient(config.GetBackend())
+		apiClient, err := client.NewControlPlaneClient(config.GetBackend())
 		if err != nil {
 			return fmt.Errorf("failed to create API client: %w", err)
 		}
@@ -119,7 +119,7 @@ var apikeyDeleteCmd = &cobra.Command{
 			return fmt.Errorf("API key management is only supported with cloud backend")
 		}
 
-		apiClient, err := client.NewClient(config.GetBackend())
+		apiClient, err := client.NewControlPlaneClient(config.GetBackend())
 		if err != nil {
 			return fmt.Errorf("failed to create API client: %w", err)
 		}

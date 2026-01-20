@@ -16,9 +16,9 @@ import (
 	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"
 	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/profile"
 
-	"github.com/spf13/cobra"
 	"github.com/TencentCloudAgentRuntime/ags-cli/internal/config"
 	"github.com/TencentCloudAgentRuntime/ags-cli/internal/output"
+	"github.com/spf13/cobra"
 )
 
 var (
@@ -228,8 +228,8 @@ func runSingleTask(ctx context.Context, task executionTask) error {
 	var err error
 
 	if runInstance != "" {
-		// Connect to existing instance
-		sandbox, err = code.Connect(ctx, runInstance, getConnectOptions()...)
+		// Connect to existing instance using cached token
+		sandbox, err = ConnectSandboxWithCache(ctx, runInstance)
 		if err != nil {
 			return fmt.Errorf("failed to connect to instance %s: %w", runInstance, err)
 		}
@@ -418,7 +418,7 @@ func runTasksSequential(ctx context.Context, tasks []executionTask) []taskResult
 	var sandboxCreateDuration time.Duration
 
 	if runInstance != "" {
-		sandbox, err = code.Connect(ctx, runInstance, getConnectOptions()...)
+		sandbox, err = ConnectSandboxWithCache(ctx, runInstance)
 		if err != nil {
 			for i, task := range tasks {
 				results[i] = taskResult{

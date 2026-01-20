@@ -7,8 +7,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/TencentCloudAgentRuntime/ags-go-sdk/connection"
+	"github.com/TencentCloudAgentRuntime/ags-go-sdk/constant"
 	"github.com/TencentCloudAgentRuntime/ags-go-sdk/sandbox/code"
+	"github.com/TencentCloudAgentRuntime/ags-go-sdk/sandbox/core"
+	toolcode "github.com/TencentCloudAgentRuntime/ags-go-sdk/tool/code"
 	"github.com/TencentCloudAgentRuntime/ags-go-sdk/tool/command"
+	"github.com/TencentCloudAgentRuntime/ags-go-sdk/tool/filesystem"
 )
 
 const (
@@ -38,22 +43,68 @@ type Manager interface {
 
 // manager implements the Manager interface
 type manager struct {
-	connectOpts []code.ConnectOption
+	// accessToken is used for data plane authentication
+	accessToken string
+	// domain is the data plane domain
+	domain string
 }
 
-// NewManager creates a new webshell manager
-func NewManager(opts ...code.ConnectOption) Manager {
+// NewManagerWithToken creates a new webshell manager that uses access token for authentication.
+// This is the recommended way to create a manager as it doesn't require AKSK credentials.
+//
+// Parameters:
+//   - accessToken: The access token for data plane authentication
+//   - domain: The data plane domain (e.g., "ap-guangzhou.tencentags.com")
+func NewManagerWithToken(accessToken string, domain string) Manager {
 	return &manager{
-		connectOpts: opts,
+		accessToken: accessToken,
+		domain:      domain,
 	}
 }
 
-// getSandbox connects to the sandbox instance
+// getSandbox connects to the sandbox instance using access token
 func (m *manager) getSandbox(ctx context.Context, instanceID string) (*code.Sandbox, error) {
-	sandbox, err := code.Connect(ctx, instanceID, m.connectOpts...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to instance %s: %w", instanceID, err)
+	// Create connection config
+	connConfig := &connection.Config{
+		Domain:      m.domain,
+		AccessToken: m.accessToken,
 	}
+
+	// Create core with nil client (we only use data plane operations)
+	coreInstance := core.NewCore(nil, instanceID, connConfig)
+
+	// Create sandbox wrapper
+	sandbox := &code.Sandbox{
+		Core: coreInstance,
+	}
+
+	// Initialize data plane clients
+	var err error
+
+	// Initialize filesystem client
+	sandbox.Files, err = filesystem.New(&connection.Config{
+		Domain:      sandbox.GetHost(constant.EnvdPort),
+		AccessToken: m.accessToken,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize filesystem client: %w", err)
+	}
+
+	// Initialize command client
+	sandbox.Commands, err = command.New(&connection.Config{
+		Domain:      sandbox.GetHost(constant.EnvdPort),
+		AccessToken: m.accessToken,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize command client: %w", err)
+	}
+
+	// Initialize code execution client
+	sandbox.Code = toolcode.New(&connection.Config{
+		Domain:      sandbox.GetHost(constant.CodePort),
+		AccessToken: m.accessToken,
+	})
+
 	return sandbox, nil
 }
 

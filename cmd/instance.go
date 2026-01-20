@@ -6,12 +6,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/TencentCloudAgentRuntime/ags-cli/internal/client"
 	"github.com/TencentCloudAgentRuntime/ags-cli/internal/config"
 	"github.com/TencentCloudAgentRuntime/ags-cli/internal/output"
+	"github.com/TencentCloudAgentRuntime/ags-cli/internal/token"
 	"github.com/TencentCloudAgentRuntime/ags-cli/internal/utils"
 	"github.com/TencentCloudAgentRuntime/ags-cli/internal/webshell"
+	"github.com/spf13/cobra"
 )
 
 var (
@@ -79,7 +80,7 @@ Examples:
 			mountOptions = append(mountOptions, *opt)
 		}
 
-		apiClient, err := client.NewClient(config.GetBackend())
+		apiClient, err := client.NewControlPlaneClient(config.GetBackend())
 		if err != nil {
 			return fmt.Errorf("failed to create API client: %w", err)
 		}
@@ -94,6 +95,12 @@ Examples:
 		instance, err := apiClient.CreateInstance(ctx, opts)
 		if err != nil {
 			return fmt.Errorf("failed to create instance: %w", err)
+		}
+
+		// Cache access token for data plane operations
+		if err := cacheInstanceToken(ctx, apiClient, instance); err != nil {
+			// Log warning but don't fail the command
+			output.PrintWarning(fmt.Sprintf("Failed to cache access token: %v", err))
 		}
 
 		totalDuration := time.Since(start)
@@ -213,7 +220,7 @@ Examples:
 			return err
 		}
 
-		apiClient, err := client.NewClient(config.GetBackend())
+		apiClient, err := client.NewControlPlaneClient(config.GetBackend())
 		if err != nil {
 			return fmt.Errorf("failed to create API client: %w", err)
 		}
@@ -357,7 +364,7 @@ var instanceGetCmd = &cobra.Command{
 			return err
 		}
 
-		apiClient, err := client.NewClient(config.GetBackend())
+		apiClient, err := client.NewControlPlaneClient(config.GetBackend())
 		if err != nil {
 			return fmt.Errorf("failed to create API client: %w", err)
 		}
@@ -482,9 +489,15 @@ var instanceDeleteCmd = &cobra.Command{
 			return err
 		}
 
-		apiClient, err := client.NewClient(config.GetBackend())
+		apiClient, err := client.NewControlPlaneClient(config.GetBackend())
 		if err != nil {
 			return fmt.Errorf("failed to create API client: %w", err)
+		}
+
+		// Initialize token cache for cleanup
+		tokenCache, cacheErr := token.NewCache()
+		if cacheErr != nil {
+			output.PrintWarning(fmt.Sprintf("Failed to initialize token cache: %v", cacheErr))
 		}
 
 		f := output.NewFormatter()
@@ -495,6 +508,10 @@ var instanceDeleteCmd = &cobra.Command{
 				output.PrintWarning(fmt.Sprintf("Failed to delete instance %s: %v", instanceID, err))
 				failed = append(failed, instanceID)
 			} else {
+				// Clean up cached token
+				if tokenCache != nil {
+					_ = tokenCache.Delete(instanceID)
+				}
 				if !f.IsJSON() {
 					output.PrintSuccess(fmt.Sprintf("Instance deleted: %s", instanceID))
 				}
@@ -566,7 +583,7 @@ Examples:
 			return err
 		}
 
-		apiClient, err := client.NewClient(config.GetBackend())
+		apiClient, err := client.NewControlPlaneClient(config.GetBackend())
 		if err != nil {
 			return fmt.Errorf("failed to create API client: %w", err)
 		}
@@ -584,10 +601,11 @@ Examples:
 			return fmt.Errorf("failed to get instance %s: %w", instanceID, err)
 		}
 
-		// Check instance status
-		if instance.Status != "RUNNING" {
-			switch instance.Status {
-			case "CREATING":
+		// Check instance status (case-insensitive comparison)
+		status := strings.ToUpper(instance.Status)
+		if status != "RUNNING" {
+			switch status {
+			case "CREATING", "STARTING":
 				return fmt.Errorf("instance %s is still being created. Please wait for it to finish and try again", instanceID)
 			case "STOPPED", "STOPPING":
 				return fmt.Errorf("instance %s is stopped. Please start it first using 'ags instance create' or contact support", instanceID)
@@ -598,28 +616,23 @@ Examples:
 			}
 		}
 
-		// Check if instance type supports webshell
-		supportedTypes := []string{"code-interpreter", "browser"}
-		toolType := strings.ToLower(instance.ToolName)
-		supported := false
-		for _, t := range supportedTypes {
-			if strings.Contains(toolType, t) {
-				supported = true
-				break
-			}
-		}
-		if !supported {
-			return fmt.Errorf("webshell is not supported for tool type '%s'.\nSupported types: %v\nPlease use a supported tool type or try other access methods", instance.ToolName, supportedTypes)
-		}
-
-		// Create webshell manager with connect options
-		webshellMgr := webshell.NewManager(getConnectOptions()...)
-
-		// Acquire access token for the instance (same as browser vnc command)
-		accessToken, err := acquireInstanceToken(ctx, instanceID)
+		// Get access token from cache or acquire new one
+		accessToken, err := GetCachedTokenOrAcquire(ctx, instanceID)
 		if err != nil {
-			return fmt.Errorf("failed to acquire access token: %w", err)
+			return fmt.Errorf("failed to get access token: %w", err)
 		}
+
+		// Determine data plane domain
+		cloudCfg := config.GetCloudConfig()
+		var domain string
+		if cloudCfg.Internal {
+			domain = cloudCfg.DataPlaneDomain()
+		} else {
+			domain = fmt.Sprintf("%s.tencentags.com", cloudCfg.Region)
+		}
+
+		// Create webshell manager with access token (no AKSK needed)
+		webshellMgr := webshell.NewManagerWithToken(accessToken, domain)
 
 		output.PrintInfo("Checking webshell status...")
 
@@ -856,4 +869,37 @@ func addInstanceCommand(parent *cobra.Command) {
 	cmd.AddCommand(loginCmd)
 
 	parent.AddCommand(cmd)
+}
+
+// cacheInstanceToken caches the access token for an instance.
+// For E2B backend, the token is returned during instance creation.
+// For Cloud backend, we need to call AcquireToken API.
+func cacheInstanceToken(ctx context.Context, apiClient client.ControlPlaneClient, instance *client.Instance) error {
+	tokenCache, err := token.NewCache()
+	if err != nil {
+		return fmt.Errorf("failed to create token cache: %w", err)
+	}
+
+	var accessToken string
+
+	// E2B backend returns token directly in the instance response
+	if instance.AccessToken != "" {
+		accessToken = instance.AccessToken
+	} else {
+		// Cloud backend needs to call AcquireToken API
+		accessToken, err = apiClient.AcquireToken(ctx, instance.ID)
+		if err != nil {
+			return fmt.Errorf("failed to acquire token: %w", err)
+		}
+	}
+
+	if accessToken == "" {
+		return fmt.Errorf("no access token available")
+	}
+
+	if err := tokenCache.Set(instance.ID, accessToken); err != nil {
+		return fmt.Errorf("failed to save token: %w", err)
+	}
+
+	return nil
 }

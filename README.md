@@ -91,6 +91,21 @@ The **E2B configuration** provides compatibility with the E2B API. With E2B back
 
 To manage sandbox tools (list/get/create/update/delete) and API keys, you must use the **Cloud backend** with Tencent Cloud SecretID and SecretKey. You can obtain your AKSK from: https://console.cloud.tencent.com/cam/capi
 
+### Architecture: Control Plane vs Data Plane
+
+AGS CLI separates operations into two layers:
+
+- **Control Plane**: Instance lifecycle management (create/delete/list), tool management, API key management
+  - E2B Backend: Uses API Key + E2B REST API
+  - Cloud Backend: Uses AKSK + Tencent Cloud API
+  
+- **Data Plane**: Code execution, shell commands, file operations
+  - Both backends use the same E2B-compatible data plane gateway with Access Token
+
+The `backend` configuration only affects control plane operations. Data plane operations always use the E2B protocol via `ags-go-sdk`.
+
+Access tokens are automatically cached in `~/.ags/tokens.json` during instance creation and used for subsequent data plane operations
+
 ## Quick Start
 
 ```bash

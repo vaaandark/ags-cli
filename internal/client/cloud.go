@@ -6,17 +6,19 @@ import (
 	"github.com/TencentCloudAgentRuntime/ags-cli/internal/config"
 )
 
-// CloudClient implements APIClient for Tencent Cloud API
-// Uses tencentcloud-sdk-go for Tool management (via CloudToolClient)
-// Uses ags-go-sdk for Instance management and code execution (via CloudInstanceClient)
-type CloudClient struct {
+// CloudControlPlane implements ControlPlaneClient for Tencent Cloud API.
+// Uses tencentcloud-sdk-go for all control plane operations:
+//   - Tool management via CloudToolClient
+//   - Instance management via CloudInstanceClient
+//   - API Key management via CloudAPIKeyClient
+type CloudControlPlane struct {
 	tool     *CloudToolClient
 	instance *CloudInstanceClient
 	apikey   *CloudAPIKeyClient
 }
 
-// NewCloudClient creates a new Cloud API client
-func NewCloudClient() (*CloudClient, error) {
+// NewCloudControlPlane creates a new Cloud control plane client
+func NewCloudControlPlane() (*CloudControlPlane, error) {
 	cfg := config.GetCloudConfig()
 
 	// Create tool client (tencentcloud-sdk-go)
@@ -25,7 +27,7 @@ func NewCloudClient() (*CloudClient, error) {
 		return nil, err
 	}
 
-	// Create instance client (ags-go-sdk)
+	// Create instance client (tencentcloud-sdk-go)
 	instanceClient, err := NewCloudInstanceClient(&cfg)
 	if err != nil {
 		return nil, err
@@ -37,7 +39,7 @@ func NewCloudClient() (*CloudClient, error) {
 		return nil, err
 	}
 
-	return &CloudClient{
+	return &CloudControlPlane{
 		tool:     toolClient,
 		instance: instanceClient,
 		apikey:   apikeyClient,
@@ -47,75 +49,70 @@ func NewCloudClient() (*CloudClient, error) {
 // ========== Tool Operations (delegated to CloudToolClient) ==========
 
 // CreateTool creates a new sandbox tool
-func (c *CloudClient) CreateTool(ctx context.Context, opts *CreateToolOptions) (*Tool, error) {
+func (c *CloudControlPlane) CreateTool(ctx context.Context, opts *CreateToolOptions) (*Tool, error) {
 	return c.tool.CreateTool(ctx, opts)
 }
 
 // UpdateTool updates a sandbox tool
-func (c *CloudClient) UpdateTool(ctx context.Context, opts *UpdateToolOptions) error {
+func (c *CloudControlPlane) UpdateTool(ctx context.Context, opts *UpdateToolOptions) error {
 	return c.tool.UpdateTool(ctx, opts)
 }
 
 // ListTools returns available tools with optional filtering and pagination
-func (c *CloudClient) ListTools(ctx context.Context, opts *ListToolsOptions) (*ListToolsResult, error) {
+func (c *CloudControlPlane) ListTools(ctx context.Context, opts *ListToolsOptions) (*ListToolsResult, error) {
 	return c.tool.ListTools(ctx, opts)
 }
 
 // GetTool returns a specific tool by ID
-func (c *CloudClient) GetTool(ctx context.Context, id string) (*Tool, error) {
+func (c *CloudControlPlane) GetTool(ctx context.Context, id string) (*Tool, error) {
 	return c.tool.GetTool(ctx, id)
 }
 
 // DeleteTool deletes a sandbox tool
-func (c *CloudClient) DeleteTool(ctx context.Context, id string) error {
+func (c *CloudControlPlane) DeleteTool(ctx context.Context, id string) error {
 	return c.tool.DeleteTool(ctx, id)
 }
 
 // ========== Instance Operations (delegated to CloudInstanceClient) ==========
 
 // CreateInstance creates a new sandbox instance
-func (c *CloudClient) CreateInstance(ctx context.Context, opts *CreateInstanceOptions) (*Instance, error) {
+func (c *CloudControlPlane) CreateInstance(ctx context.Context, opts *CreateInstanceOptions) (*Instance, error) {
 	return c.instance.CreateInstance(ctx, opts)
 }
 
 // ListInstances returns sandbox instances with optional filters
-func (c *CloudClient) ListInstances(ctx context.Context, opts *ListInstancesOptions) (*ListInstancesResult, error) {
+func (c *CloudControlPlane) ListInstances(ctx context.Context, opts *ListInstancesOptions) (*ListInstancesResult, error) {
 	return c.instance.ListInstances(ctx, opts)
 }
 
 // GetInstance returns a specific instance by ID
-func (c *CloudClient) GetInstance(ctx context.Context, id string) (*Instance, error) {
+func (c *CloudControlPlane) GetInstance(ctx context.Context, id string) (*Instance, error) {
 	return c.instance.GetInstance(ctx, id)
 }
 
 // DeleteInstance deletes a sandbox instance
-func (c *CloudClient) DeleteInstance(ctx context.Context, id string) error {
+func (c *CloudControlPlane) DeleteInstance(ctx context.Context, id string) error {
 	return c.instance.DeleteInstance(ctx, id)
 }
 
-// Execute runs code in a sandbox instance
-func (c *CloudClient) Execute(ctx context.Context, instanceID string, code string, language string) (*ExecuteResult, error) {
-	return c.instance.Execute(ctx, instanceID, code, language)
-}
-
-// ExecuteStream runs code with streaming output callbacks
-func (c *CloudClient) ExecuteStream(ctx context.Context, instanceID string, code string, language string, callbacks *StreamCallbacks) (*ExecuteResult, error) {
-	return c.instance.ExecuteStream(ctx, instanceID, code, language, callbacks)
+// AcquireToken acquires an access token for data plane operations
+func (c *CloudControlPlane) AcquireToken(ctx context.Context, instanceID string) (string, error) {
+	return c.instance.AcquireToken(ctx, instanceID)
 }
 
 // ========== API Key Operations (delegated to CloudAPIKeyClient) ==========
 
 // CreateAPIKey creates a new API key
-func (c *CloudClient) CreateAPIKey(ctx context.Context, name string) (*CreateAPIKeyResult, error) {
+func (c *CloudControlPlane) CreateAPIKey(ctx context.Context, name string) (*CreateAPIKeyResult, error) {
 	return c.apikey.CreateAPIKey(ctx, name)
 }
 
 // ListAPIKeys returns all API keys
-func (c *CloudClient) ListAPIKeys(ctx context.Context) ([]APIKey, error) {
+func (c *CloudControlPlane) ListAPIKeys(ctx context.Context) ([]APIKey, error) {
 	return c.apikey.ListAPIKeys(ctx)
 }
 
 // DeleteAPIKey deletes an API key
-func (c *CloudClient) DeleteAPIKey(ctx context.Context, keyID string) error {
+func (c *CloudControlPlane) DeleteAPIKey(ctx context.Context, keyID string) error {
 	return c.apikey.DeleteAPIKey(ctx, keyID)
 }

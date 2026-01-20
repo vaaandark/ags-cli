@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/TencentCloudAgentRuntime/ags-go-sdk/sandbox/code"
-	"github.com/spf13/cobra"
 	"github.com/TencentCloudAgentRuntime/ags-cli/internal/config"
 	"github.com/TencentCloudAgentRuntime/ags-cli/internal/output"
+	"github.com/TencentCloudAgentRuntime/ags-go-sdk/sandbox/code"
+	"github.com/spf13/cobra"
 )
 
 var (
@@ -143,7 +143,7 @@ func getSandboxForFile(ctx context.Context) (*code.Sandbox, func(), time.Duratio
 	}
 
 	if fileInstance != "" {
-		sandbox, err := code.Connect(ctx, fileInstance, getConnectOptions()...)
+		sandbox, err := ConnectSandboxWithCache(ctx, fileInstance)
 		if err != nil {
 			return nil, nil, 0, fmt.Errorf("failed to connect to instance %s: %w", fileInstance, err)
 		}

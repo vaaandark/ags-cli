@@ -7,43 +7,38 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/TencentCloudAgentRuntime/ags-cli/internal/config"
 )
 
-// E2BClient implements APIClient for E2B API
-type E2BClient struct {
+// E2BControlPlane implements ControlPlaneClient for E2B API.
+// Uses E2B REST API with API Key for control plane operations.
+// Data plane operations are handled by ags-go-sdk via the cmd layer.
+type E2BControlPlane struct {
 	httpClient *http.Client
 	apiKey     string
 	domain     string
 	region     string
-	// tokenCache stores instanceID -> accessToken mapping
-	tokenCache map[string]string
-	tokenMu    sync.RWMutex
-	dataPlane  *DataPlaneClient
 }
 
-// NewE2BClient creates a new E2B API client
-func NewE2BClient() (*E2BClient, error) {
+// NewE2BControlPlane creates a new E2B control plane client
+func NewE2BControlPlane() (*E2BControlPlane, error) {
 	cfg := config.GetE2BConfig()
 	httpClient := &http.Client{Timeout: 60 * time.Second}
-	return &E2BClient{
+	return &E2BControlPlane{
 		httpClient: httpClient,
 		apiKey:     cfg.APIKey,
 		domain:     cfg.Domain,
 		region:     cfg.Region,
-		tokenCache: make(map[string]string),
-		dataPlane:  NewDataPlaneClient(httpClient),
 	}, nil
 }
 
-func (c *E2BClient) getAPIEndpoint() string {
+func (c *E2BControlPlane) getAPIEndpoint() string {
 	return fmt.Sprintf("https://api.%s.%s", c.region, c.domain)
 }
 
-func (c *E2BClient) doRequest(ctx context.Context, method, url string, body any) (*http.Response, error) {
+func (c *E2BControlPlane) doRequest(ctx context.Context, method, url string, body any) (*http.Response, error) {
 	var bodyReader io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
@@ -64,33 +59,38 @@ func (c *E2BClient) doRequest(ctx context.Context, method, url string, body any)
 	return c.httpClient.Do(req)
 }
 
+// ========== Tool Operations (not supported by E2B) ==========
+
 // CreateTool is not supported by E2B backend
-func (c *E2BClient) CreateTool(ctx context.Context, opts *CreateToolOptions) (*Tool, error) {
+func (c *E2BControlPlane) CreateTool(ctx context.Context, opts *CreateToolOptions) (*Tool, error) {
 	return nil, fmt.Errorf("tool operations are not supported by E2B backend, please use cloud backend")
 }
 
 // UpdateTool is not supported by E2B backend
-func (c *E2BClient) UpdateTool(ctx context.Context, opts *UpdateToolOptions) error {
+func (c *E2BControlPlane) UpdateTool(ctx context.Context, opts *UpdateToolOptions) error {
 	return fmt.Errorf("tool operations are not supported by E2B backend, please use cloud backend")
 }
 
 // DeleteTool is not supported by E2B backend
-func (c *E2BClient) DeleteTool(ctx context.Context, id string) error {
+func (c *E2BControlPlane) DeleteTool(ctx context.Context, id string) error {
 	return fmt.Errorf("tool operations are not supported by E2B backend, please use cloud backend")
 }
 
 // ListTools is not supported by E2B backend
-func (c *E2BClient) ListTools(ctx context.Context, opts *ListToolsOptions) (*ListToolsResult, error) {
+func (c *E2BControlPlane) ListTools(ctx context.Context, opts *ListToolsOptions) (*ListToolsResult, error) {
 	return nil, fmt.Errorf("tool operations are not supported by E2B backend, please use cloud backend")
 }
 
 // GetTool is not supported by E2B backend
-func (c *E2BClient) GetTool(ctx context.Context, id string) (*Tool, error) {
+func (c *E2BControlPlane) GetTool(ctx context.Context, id string) (*Tool, error) {
 	return nil, fmt.Errorf("tool operations are not supported by E2B backend, please use cloud backend")
 }
 
-// CreateInstance creates a new sandbox instance
-func (c *E2BClient) CreateInstance(ctx context.Context, opts *CreateInstanceOptions) (*Instance, error) {
+// ========== Instance Operations ==========
+
+// CreateInstance creates a new sandbox instance.
+// The returned Instance contains AccessToken which should be cached for data plane operations.
+func (c *E2BControlPlane) CreateInstance(ctx context.Context, opts *CreateInstanceOptions) (*Instance, error) {
 	url := c.getAPIEndpoint() + "/sandboxes"
 
 	templateID := opts.ToolName
@@ -130,11 +130,6 @@ func (c *E2BClient) CreateInstance(ctx context.Context, opts *CreateInstanceOpti
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	// Cache the access token for later use
-	c.tokenMu.Lock()
-	c.tokenCache[result.SandboxID] = result.EnvdAccessToken
-	c.tokenMu.Unlock()
-
 	return &Instance{
 		ID:          result.SandboxID,
 		ToolID:      templateID,
@@ -147,7 +142,7 @@ func (c *E2BClient) CreateInstance(ctx context.Context, opts *CreateInstanceOpti
 }
 
 // ListInstances returns all sandbox instances
-func (c *E2BClient) ListInstances(ctx context.Context, opts *ListInstancesOptions) (*ListInstancesResult, error) {
+func (c *E2BControlPlane) ListInstances(ctx context.Context, opts *ListInstancesOptions) (*ListInstancesResult, error) {
 	url := c.getAPIEndpoint() + "/sandboxes"
 
 	resp, err := c.doRequest(ctx, http.MethodGet, url, nil)
@@ -189,7 +184,7 @@ func (c *E2BClient) ListInstances(ctx context.Context, opts *ListInstancesOption
 }
 
 // GetInstance returns a specific instance by ID
-func (c *E2BClient) GetInstance(ctx context.Context, id string) (*Instance, error) {
+func (c *E2BControlPlane) GetInstance(ctx context.Context, id string) (*Instance, error) {
 	result, err := c.ListInstances(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -203,7 +198,7 @@ func (c *E2BClient) GetInstance(ctx context.Context, id string) (*Instance, erro
 }
 
 // DeleteInstance deletes a sandbox instance
-func (c *E2BClient) DeleteInstance(ctx context.Context, id string) error {
+func (c *E2BControlPlane) DeleteInstance(ctx context.Context, id string) error {
 	url := c.getAPIEndpoint() + "/sandboxes/" + id
 
 	resp, err := c.doRequest(ctx, http.MethodDelete, url, nil)
@@ -217,51 +212,29 @@ func (c *E2BClient) DeleteInstance(ctx context.Context, id string) error {
 		return fmt.Errorf("failed to delete instance: %s - %s", resp.Status, string(body))
 	}
 
-	// Clean up cached token
-	c.tokenMu.Lock()
-	delete(c.tokenCache, id)
-	c.tokenMu.Unlock()
-
 	return nil
 }
 
-// Execute runs code in a sandbox instance
-func (c *E2BClient) Execute(ctx context.Context, instanceID string, code string, language string) (*ExecuteResult, error) {
-	return c.ExecuteStream(ctx, instanceID, code, language, nil)
-}
-
-// ExecuteStream runs code with streaming output callbacks
-func (c *E2BClient) ExecuteStream(ctx context.Context, instanceID string, code string, language string, callbacks *StreamCallbacks) (*ExecuteResult, error) {
-	// Get cached access token
-	c.tokenMu.RLock()
-	accessToken := c.tokenCache[instanceID]
-	c.tokenMu.RUnlock()
-
-	// Build sandbox domain: {port}-{instanceID}.{region}.{domain}
-	sandboxDomain := fmt.Sprintf("%d-%s.%s.%s", 49999, instanceID, c.region, c.domain)
-
-	// Execute code via data plane
-	return c.dataPlane.ExecuteCode(ctx, &ExecuteCodeConfig{
-		Domain:      sandboxDomain,
-		AccessToken: accessToken,
-		Code:        code,
-		Language:    language,
-	}, callbacks)
+// AcquireToken is not supported by E2B backend.
+// For E2B backend, access tokens are only returned during instance creation
+// and should be retrieved from the token cache.
+func (c *E2BControlPlane) AcquireToken(ctx context.Context, instanceID string) (string, error) {
+	return "", fmt.Errorf("E2B backend does not support acquiring tokens after instance creation; token should be cached at creation time")
 }
 
 // ========== API Key Operations (not supported by E2B) ==========
 
 // CreateAPIKey is not supported by E2B backend
-func (c *E2BClient) CreateAPIKey(ctx context.Context, name string) (*CreateAPIKeyResult, error) {
+func (c *E2BControlPlane) CreateAPIKey(ctx context.Context, name string) (*CreateAPIKeyResult, error) {
 	return nil, fmt.Errorf("API key management is not supported by E2B backend")
 }
 
 // ListAPIKeys is not supported by E2B backend
-func (c *E2BClient) ListAPIKeys(ctx context.Context) ([]APIKey, error) {
+func (c *E2BControlPlane) ListAPIKeys(ctx context.Context) ([]APIKey, error) {
 	return nil, fmt.Errorf("API key management is not supported by E2B backend")
 }
 
 // DeleteAPIKey is not supported by E2B backend
-func (c *E2BClient) DeleteAPIKey(ctx context.Context, keyID string) error {
+func (c *E2BControlPlane) DeleteAPIKey(ctx context.Context, keyID string) error {
 	return fmt.Errorf("API key management is not supported by E2B backend")
 }

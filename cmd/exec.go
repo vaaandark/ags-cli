@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/TencentCloudAgentRuntime/ags-cli/internal/config"
+	"github.com/TencentCloudAgentRuntime/ags-cli/internal/output"
 	"github.com/TencentCloudAgentRuntime/ags-go-sdk/sandbox/code"
 	"github.com/TencentCloudAgentRuntime/ags-go-sdk/tool/command"
 	"github.com/spf13/cobra"
-	"github.com/TencentCloudAgentRuntime/ags-cli/internal/config"
-	"github.com/TencentCloudAgentRuntime/ags-cli/internal/output"
 )
 
 var (
@@ -95,7 +95,7 @@ Examples:
 // Returns sandbox, cleanup function, create duration (0 if connecting to existing), and error
 func getSandboxForExec(ctx context.Context) (*code.Sandbox, func(), time.Duration, error) {
 	if execInstance != "" {
-		sandbox, err := code.Connect(ctx, execInstance, getConnectOptions()...)
+		sandbox, err := ConnectSandboxWithCache(ctx, execInstance)
 		if err != nil {
 			return nil, nil, 0, fmt.Errorf("failed to connect to instance %s: %w", execInstance, err)
 		}

@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/TencentCloudAgentRuntime/ags-cli/internal/client"
 	"github.com/TencentCloudAgentRuntime/ags-cli/internal/config"
 	"github.com/TencentCloudAgentRuntime/ags-cli/internal/output"
+	"github.com/spf13/cobra"
 )
 
 var (
@@ -94,7 +94,7 @@ Examples:
 			tags[parts[0]] = parts[1]
 		}
 
-		apiClient, err := client.NewClient(config.GetBackend())
+		apiClient, err := client.NewControlPlaneClient(config.GetBackend())
 		if err != nil {
 			return fmt.Errorf("failed to create API client: %w", err)
 		}
@@ -199,7 +199,7 @@ var toolGetCmd = &cobra.Command{
 		start := time.Now()
 		toolID := args[0]
 
-		apiClient, err := client.NewClient(config.GetBackend())
+		apiClient, err := client.NewControlPlaneClient(config.GetBackend())
 		if err != nil {
 			return fmt.Errorf("failed to create API client: %w", err)
 		}
@@ -455,7 +455,7 @@ Examples:
 				}
 			}
 
-			apiClient, err := client.NewClient(config.GetBackend())
+			apiClient, err := client.NewControlPlaneClient(config.GetBackend())
 			if err != nil {
 				return fmt.Errorf("failed to create API client: %w", err)
 			}
@@ -664,7 +664,7 @@ Examples:
 				opts.Tags = tags
 			}
 
-			apiClient, err := client.NewClient(config.GetBackend())
+			apiClient, err := client.NewControlPlaneClient(config.GetBackend())
 			if err != nil {
 				return fmt.Errorf("failed to create API client: %w", err)
 			}
@@ -720,7 +720,7 @@ Examples:
 			ctx := context.Background()
 			start := time.Now()
 
-			apiClient, err := client.NewClient(config.GetBackend())
+			apiClient, err := client.NewControlPlaneClient(config.GetBackend())
 			if err != nil {
 				return fmt.Errorf("failed to create API client: %w", err)
 			}

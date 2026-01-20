@@ -6,13 +6,11 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	ags "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/ags/v20250920"
-	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"
-	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/profile"
 
 	"github.com/TencentCloudAgentRuntime/ags-cli/internal/client"
 	"github.com/TencentCloudAgentRuntime/ags-cli/internal/config"
 	"github.com/TencentCloudAgentRuntime/ags-cli/internal/output"
+	"github.com/TencentCloudAgentRuntime/ags-cli/internal/token"
 )
 
 var (
@@ -96,7 +94,7 @@ func browserVNCCommand(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("cannot specify both --tool-name/--tool and --tool-id")
 	}
 
-	apiClient, err := client.NewClient(config.GetBackend())
+	apiClient, err := client.NewControlPlaneClient(config.GetBackend())
 	if err != nil {
 		return fmt.Errorf("failed to create API client: %w", err)
 	}
@@ -184,31 +182,38 @@ func browserVNCCommand(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// acquireInstanceToken acquires an access token for the given instance
+// acquireInstanceToken acquires an access token for the given instance.
+// It first checks the token cache, then tries to acquire from the control plane API.
 func acquireInstanceToken(ctx context.Context, instanceID string) (string, error) {
-	cloudCfg := config.GetCloudConfig()
-
-	credential := common.NewCredential(cloudCfg.SecretID, cloudCfg.SecretKey)
-	cpf := profile.NewClientProfile()
-	cpf.HttpProfile.Endpoint = cloudCfg.ControlPlaneEndpoint()
-
-	agsClient, err := ags.NewClient(credential, cloudCfg.Region, cpf)
-	if err != nil {
-		return "", fmt.Errorf("failed to create AGS client: %w", err)
+	// Try to get token from cache first
+	tokenCache, err := token.NewCache()
+	if err == nil {
+		if cachedToken, ok := tokenCache.Get(instanceID); ok && cachedToken != "" {
+			return cachedToken, nil
+		}
 	}
 
-	tokenResp, err := agsClient.AcquireSandboxInstanceTokenWithContext(ctx, &ags.AcquireSandboxInstanceTokenRequest{
-		InstanceId: &instanceID,
-	})
+	// Token not in cache, try to acquire from API
+	backend := config.GetBackend()
+	apiClient, err := client.NewControlPlaneClient(backend)
 	if err != nil {
+		return "", fmt.Errorf("failed to create API client: %w", err)
+	}
+
+	accessToken, err := apiClient.AcquireToken(ctx, instanceID)
+	if err != nil {
+		if backend == "e2b" {
+			return "", fmt.Errorf("access token not found in cache; for E2B backend, tokens are only available at instance creation time")
+		}
 		return "", err
 	}
 
-	if tokenResp.Response == nil || tokenResp.Response.Token == nil {
-		return "", fmt.Errorf("no token returned from API")
+	// Cache the token for future use
+	if tokenCache != nil {
+		_ = tokenCache.Set(instanceID, accessToken)
 	}
 
-	return *tokenResp.Response.Token, nil
+	return accessToken, nil
 }
 
 // buildVNCURL constructs the noVNC URL for browser sandbox

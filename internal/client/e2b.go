@@ -183,18 +183,44 @@ func (c *E2BControlPlane) ListInstances(ctx context.Context, opts *ListInstances
 	}, nil
 }
 
-// GetInstance returns a specific instance by ID
+// GetInstance returns a specific instance by ID.
+// Unlike ListInstances, this calls GET /sandboxes/{id} directly,
+// which also returns the envdAccessToken field.
 func (c *E2BControlPlane) GetInstance(ctx context.Context, id string) (*Instance, error) {
-	result, err := c.ListInstances(ctx, nil)
+	url := c.getAPIEndpoint() + "/sandboxes/" + id
+
+	resp, err := c.doRequest(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
-	for _, inst := range result.Instances {
-		if inst.ID == id {
-			return &inst, nil
-		}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to get instance: %s - %s", resp.Status, string(body))
 	}
-	return nil, fmt.Errorf("instance not found: %s", id)
+
+	var result struct {
+		SandboxID       string `json:"sandboxID"`
+		TemplateID      string `json:"templateID"`
+		Alias           string `json:"alias"`
+		StartedAt       string `json:"startedAt"`
+		State           string `json:"state"`
+		EnvdAccessToken string `json:"envdAccessToken"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &Instance{
+		ID:          result.SandboxID,
+		ToolID:      result.TemplateID,
+		ToolName:    result.TemplateID,
+		Status:      result.State,
+		CreatedAt:   result.StartedAt,
+		AccessToken: result.EnvdAccessToken,
+		Domain:      fmt.Sprintf("%s.%s", c.region, c.domain),
+	}, nil
 }
 
 // DeleteInstance deletes a sandbox instance
@@ -215,11 +241,17 @@ func (c *E2BControlPlane) DeleteInstance(ctx context.Context, id string) error {
 	return nil
 }
 
-// AcquireToken is not supported by E2B backend.
-// For E2B backend, access tokens are only returned during instance creation
-// and should be retrieved from the token cache.
+// AcquireToken acquires an access token by calling GET /sandboxes/{id}.
+// The envdAccessToken field is included in the instance detail response.
 func (c *E2BControlPlane) AcquireToken(ctx context.Context, instanceID string) (string, error) {
-	return "", fmt.Errorf("E2B backend does not support acquiring tokens after instance creation; token should be cached at creation time")
+	inst, err := c.GetInstance(ctx, instanceID)
+	if err != nil {
+		return "", fmt.Errorf("failed to acquire token: %w", err)
+	}
+	if inst.AccessToken == "" {
+		return "", fmt.Errorf("no access token returned for instance %s", instanceID)
+	}
+	return inst.AccessToken, nil
 }
 
 // ========== API Key Operations (not supported by E2B) ==========

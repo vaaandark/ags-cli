@@ -27,7 +27,7 @@ type ControlPlaneClient interface {
 
 	// AcquireToken acquires an access token for data plane operations.
 	// For cloud backend, this calls AcquireSandboxInstanceToken API.
-	// For E2B backend, this returns an error as tokens are only available at instance creation.
+	// For E2B backend, this calls GET /sandboxes/{id} to retrieve the envdAccessToken.
 	AcquireToken(ctx context.Context, instanceID string) (string, error)
 
 	// API Key operations (cloud backend only, E2B backend returns not supported error)

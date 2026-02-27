@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-02-27
+
+### Changed
+- Automate release workflow via GitHub Actions: tags and GitHub Releases are now created automatically when a `release/*` branch PR is merged into `main`
+
 ## [0.1.2] - 2026-02-11
 
 ### Changed

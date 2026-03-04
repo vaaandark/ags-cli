@@ -24,11 +24,12 @@ type E2BControlPlane struct {
 
 // NewE2BControlPlane creates a new E2B control plane client
 func NewE2BControlPlane() (*E2BControlPlane, error) {
-	cfg := config.GetE2BConfig()
+	e2bCfg := config.GetE2BConfig()
+	cfg := config.Get()
 	httpClient := &http.Client{Timeout: 60 * time.Second}
 	return &E2BControlPlane{
 		httpClient: httpClient,
-		apiKey:     cfg.APIKey,
+		apiKey:     e2bCfg.APIKey,
 		domain:     cfg.Domain,
 		region:     cfg.Region,
 	}, nil

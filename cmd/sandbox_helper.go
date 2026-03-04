@@ -49,15 +49,10 @@ func resolveUser(flagValue string) string {
 //   - *code.Sandbox: A sandbox instance with data plane clients initialized
 //   - error: Any error encountered during initialization
 func ConnectWithToken(ctx context.Context, instanceID string, accessToken string) (*code.Sandbox, error) {
-	cloudCfg := config.GetCloudConfig()
+	cfg := config.Get()
 
 	// Determine the data plane domain
-	var domain string
-	if cloudCfg.Internal {
-		domain = cloudCfg.DataPlaneDomain()
-	} else {
-		domain = fmt.Sprintf("%s.tencentags.com", cloudCfg.Region)
-	}
+	domain := cfg.DataPlaneRegionDomain()
 
 	// Create connection config
 	connConfig := &connection.Config{

@@ -84,7 +84,7 @@ func (c *Cache) withLock(fn func() error) error {
 	if err != nil || !locked {
 		return fmt.Errorf("failed to acquire token cache lock: %w", err)
 	}
-	defer fl.Unlock()
+	defer func() { _ = fl.Unlock() }()
 	return fn()
 }
 
@@ -140,22 +140,22 @@ func (c *Cache) saveLocked(cache *CacheData) error {
 	tmpPath := tmpFile.Name()
 
 	if _, err := tmpFile.Write(data); err != nil {
-		tmpFile.Close()
-		os.Remove(tmpPath)
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("failed to write temp file: %w", err)
 	}
 	if err := tmpFile.Chmod(0600); err != nil {
-		tmpFile.Close()
-		os.Remove(tmpPath)
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("failed to set temp file permissions: %w", err)
 	}
 	if err := tmpFile.Close(); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("failed to close temp file: %w", err)
 	}
 
 	if err := os.Rename(tmpPath, c.path); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("failed to rename temp file to cache file: %w", err)
 	}
 

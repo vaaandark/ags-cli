@@ -587,7 +587,7 @@ func runAdbCommand(adbPath string, args ...string) error {
 // mustAtoi converts a string to int, returning 0 on error.
 func mustAtoi(s string) int {
 	var n int
-	fmt.Sscanf(s, "%d", &n)
+	_, _ = fmt.Sscanf(s, "%d", &n)
 	return n
 }
 

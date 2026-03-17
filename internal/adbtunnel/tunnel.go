@@ -36,13 +36,13 @@ const (
 
 // TunnelOptions defines configuration for the ADB WebSocket tunnel.
 type TunnelOptions struct {
-	InstanceID    string              // e.g. "sandbox-xxx"
-	Domain        string              // e.g. "ap-guangzhou.tencentags.com"
+	InstanceID    string                 // e.g. "sandbox-xxx"
+	Domain        string                 // e.g. "ap-guangzhou.tencentags.com"
 	TokenProvider func() (string, error) // Dynamic token provider; called on each (re)connect
-	Endpoint      string              // Optional, overrides WebSocket destination (e.g. gateway IP)
-	Insecure      bool                // Skip TLS verification
-	ListenAddress string              // e.g. "127.0.0.1:0" for random port
-	Logger        *log.Logger         // Optional logger; defaults to log.Default()
+	Endpoint      string                 // Optional, overrides WebSocket destination (e.g. gateway IP)
+	Insecure      bool                   // Skip TLS verification
+	ListenAddress string                 // e.g. "127.0.0.1:0" for random port
+	Logger        *log.Logger            // Optional logger; defaults to log.Default()
 }
 
 // Tunnel manages an active bridging service between local ADB clients and
@@ -122,7 +122,7 @@ func (t *Tunnel) LocalAddr() string {
 func (t *Tunnel) Stop() {
 	t.cancel()
 	if t.listener != nil {
-		t.listener.Close()
+		_ = t.listener.Close()
 	}
 	t.wg.Wait()
 	t.logger.Println("ADB Tunnel stopped.")
@@ -158,7 +158,7 @@ func (t *Tunnel) Probe() error {
 		websocket.FormatCloseMessage(websocket.CloseNormalClosure, "probe"),
 		time.Now().Add(3*time.Second),
 	)
-	wsConn.Close()
+	_ = wsConn.Close()
 
 	return nil
 }
@@ -200,7 +200,7 @@ func (t *Tunnel) acceptLoop() {
 // On WebSocket disconnection (except preemption), it re-establishes the WS connection
 // while keeping the local TCP connection alive, so the adb client doesn't need to reconnect.
 func (t *Tunnel) handleConnectionWithReconnect(localConn net.Conn) {
-	defer localConn.Close()
+	defer func() { _ = localConn.Close() }()
 
 	attempt := 0
 	for {
@@ -276,7 +276,7 @@ func (t *Tunnel) handleConnection(localConn net.Conn) (preempted bool, err error
 	defer pingTicker.Stop()
 
 	wsConn.SetPongHandler(func(appData string) error {
-		wsConn.SetReadDeadline(time.Now().Add(readTimeout))
+		_ = wsConn.SetReadDeadline(time.Now().Add(readTimeout))
 		return nil
 	})
 
@@ -313,7 +313,7 @@ func (t *Tunnel) handleConnection(localConn net.Conn) (preempted bool, err error
 	go func() {
 		defer transferWg.Done()
 		defer close(doneWrite)
-		wsConn.SetReadDeadline(time.Now().Add(readTimeout))
+		_ = wsConn.SetReadDeadline(time.Now().Add(readTimeout))
 		var lastErr error
 		for {
 			msgType, reader, readErr := wsConn.NextReader()
@@ -328,7 +328,7 @@ func (t *Tunnel) handleConnection(localConn net.Conn) (preempted bool, err error
 			}
 
 			// Reset deadline on valid read (in addition to PongHandler)
-			wsConn.SetReadDeadline(time.Now().Add(readTimeout))
+			_ = wsConn.SetReadDeadline(time.Now().Add(readTimeout))
 
 			if msgType == websocket.BinaryMessage || msgType == websocket.TextMessage {
 				if _, copyErr := io.Copy(localConn, reader); copyErr != nil {
@@ -344,7 +344,7 @@ func (t *Tunnel) handleConnection(localConn net.Conn) (preempted bool, err error
 	// Close connections first to unblock goroutines, then wait for them to finish.
 	var wsCloseErr error
 	defer func() {
-		wsConn.Close()
+		_ = wsConn.Close()
 		// Do NOT close localConn here — it's managed by handleConnectionWithReconnect
 		transferWg.Wait()
 	}()

@@ -162,7 +162,7 @@ func TestTunnelBridging(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to start TCP listener: %v", err)
 	}
-	defer tcpListener.Close()
+	defer func() { _ = tcpListener.Close() }()
 
 	// Mock adb server echoes data back
 	go func() {
@@ -172,8 +172,8 @@ func TestTunnelBridging(t *testing.T) {
 				return
 			}
 			go func(c net.Conn) {
-				defer c.Close()
-				io.Copy(c, c) // echo
+				defer func() { _ = c.Close() }()
+				_, _ = io.Copy(c, c) // echo
 			}(conn)
 		}
 	}()
@@ -191,14 +191,14 @@ func TestTunnelBridging(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		// Bridge to mock TCP adb server
 		tcpConn, err := net.Dial("tcp", tcpListener.Addr().String())
 		if err != nil {
 			return
 		}
-		defer tcpConn.Close()
+		defer func() { _ = tcpConn.Close() }()
 
 		var wg sync.WaitGroup
 		wg.Add(2)
@@ -262,7 +262,7 @@ func TestTunnelBridging(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to connect to tunnel: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Send data and verify echo
 	testData := "CNXN\x00\x00\x00\x01"
@@ -271,7 +271,7 @@ func TestTunnelBridging(t *testing.T) {
 	}
 
 	buf := make([]byte, len(testData))
-	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 	n, err := io.ReadFull(conn, buf)
 	if err != nil {
 		t.Fatalf("failed to read echo: %v", err)

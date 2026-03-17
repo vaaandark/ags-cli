@@ -74,7 +74,7 @@ func (s *Store) Save(sandboxID string, entry TunnelEntry) error {
 	if err != nil || !locked {
 		return fmt.Errorf("failed to acquire store lock: %w", err)
 	}
-	defer fl.Unlock()
+	defer func() { _ = fl.Unlock() }()
 
 	entries, err := s.loadLocked()
 	if err != nil {
@@ -95,7 +95,7 @@ func (s *Store) Remove(sandboxID string) error {
 	if err != nil || !locked {
 		return fmt.Errorf("failed to acquire store lock: %w", err)
 	}
-	defer fl.Unlock()
+	defer func() { _ = fl.Unlock() }()
 
 	entries, err := s.loadLocked()
 	if err != nil {
@@ -128,7 +128,7 @@ func (s *Store) List() (map[string]TunnelEntry, error) {
 	if err != nil || !locked {
 		return nil, fmt.Errorf("failed to acquire store lock: %w", err)
 	}
-	defer fl.Unlock()
+	defer func() { _ = fl.Unlock() }()
 
 	entries, err := s.loadLocked()
 	if err != nil {
@@ -163,7 +163,7 @@ func (s *Store) Cleanup(sandboxID string) error {
 	if err != nil || !locked {
 		return fmt.Errorf("failed to acquire store lock: %w", err)
 	}
-	defer fl.Unlock()
+	defer func() { _ = fl.Unlock() }()
 
 	entries, err := s.loadLocked()
 	if err != nil {
@@ -193,7 +193,7 @@ func (s *Store) CleanupAll() error {
 	if err != nil || !locked {
 		return fmt.Errorf("failed to acquire store lock: %w", err)
 	}
-	defer fl.Unlock()
+	defer func() { _ = fl.Unlock() }()
 
 	entries, err := s.loadLocked()
 	if err != nil {
@@ -269,27 +269,26 @@ func (s *Store) saveLocked(entries map[string]TunnelEntry) error {
 	tmpPath := tmpFile.Name()
 
 	if _, err := tmpFile.Write(data); err != nil {
-		tmpFile.Close()
-		os.Remove(tmpPath)
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("failed to write temp file: %w", err)
 	}
 
 	if err := tmpFile.Chmod(0600); err != nil {
-		tmpFile.Close()
-		os.Remove(tmpPath)
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("failed to set temp file permissions: %w", err)
 	}
 
 	if err := tmpFile.Close(); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("failed to close temp file: %w", err)
 	}
 
 	if err := os.Rename(tmpPath, s.path); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("failed to rename temp file: %w", err)
 	}
 
 	return nil
 }
-

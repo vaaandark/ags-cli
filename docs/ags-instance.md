@@ -43,9 +43,23 @@ ags i c [flags]
 | `--tool-id` | string | - | Tool ID (cloud backend only) |
 | `--timeout` | int | `300` | Instance timeout in seconds |
 | `--mount-option` | string | - | Mount option override (repeatable) |
+| `--auth-mode` | string | - | Auth mode: `DEFAULT`, `TOKEN`, `NONE`, `PUBLIC` |
 | `--time` | bool | `false` | Print elapsed time |
 
 Note: Must specify either `--tool` or `--tool-id`, but not both.
+
+### Auth Mode
+
+`--auth-mode` controls whether the sandbox data plane requires an access token. Both cloud and E2B backends support this flag; on E2B the CLI translates the enum into the backend's `secure` + `network.allowPublicTraffic` fields.
+
+| Value | envd management port (49983) | Application ports | Notes |
+|-------|-----------------------------|-------------------|-------|
+| `DEFAULT` | token required | token required | Backend default (currently equivalent to `TOKEN`) |
+| `TOKEN` | token required | token required | Full authentication |
+| `PUBLIC` | token required | open | Expose application traffic publicly |
+| `NONE` | open | open | No authentication at all |
+
+When the instance is created with `NONE`, `ags instance login` automatically skips token acquisition and does not send `X-Access-Token`.
 
 ### Mount Option Format
 
@@ -75,6 +89,13 @@ ags instance create -t code-interpreter-v1 --timeout 3600
 # Create with mount option override
 ags instance create -t my-tool \
   --mount-option "name=data,dst=/workspace,subpath=user-123"
+
+# Create a sandbox that requires no token on any port
+ags instance create -t my-tool --auth-mode NONE
+
+# Create a sandbox whose application ports are open but envd is still
+# protected by a token
+ags instance create -t my-tool --auth-mode PUBLIC
 ```
 
 ## list

@@ -43,9 +43,23 @@ ags i c [选项]
 | `--tool-id` | string | - | 工具 ID（仅云端后端） |
 | `--timeout` | int | `300` | 实例超时时间（秒） |
 | `--mount-option` | string | - | 挂载选项覆盖（可重复） |
+| `--auth-mode` | string | - | 认证模式：`DEFAULT`、`TOKEN`、`NONE`、`PUBLIC` |
 | `--time` | bool | `false` | 显示耗时 |
 
 注意：必须指定 `--tool` 或 `--tool-id` 之一，但不能同时指定。
+
+### 认证模式
+
+`--auth-mode` 控制沙箱数据面是否要求访问令牌。云端与 E2B 后端均支持该参数；在 E2B 后端，CLI 会自动将该枚举转换为后端的 `secure` + `network.allowPublicTraffic` 字段。
+
+| 取值 | envd 管理端口（49983） | 业务端口 | 说明 |
+|------|------------------------|----------|------|
+| `DEFAULT` | 需要 token | 需要 token | 使用后端默认值（当前等价于 `TOKEN`） |
+| `TOKEN` | 需要 token | 需要 token | 全端口认证 |
+| `PUBLIC` | 需要 token | 免认证 | 对外开放业务流量，管理面仍受保护 |
+| `NONE` | 免认证 | 免认证 | 完全免认证 |
+
+以 `NONE` 创建的实例在 `ags instance login` 时会自动跳过令牌获取，不再发送 `X-Access-Token`。
 
 ### 挂载选项格式
 
@@ -75,6 +89,12 @@ ags instance create -t code-interpreter-v1 --timeout 3600
 # 创建时覆盖挂载选项
 ags instance create -t my-tool \
   --mount-option "name=data,dst=/workspace,subpath=user-123"
+
+# 创建一个全端口免认证的沙箱
+ags instance create -t my-tool --auth-mode NONE
+
+# 创建一个业务端口开放、管理面仍需 token 的沙箱
+ags instance create -t my-tool --auth-mode PUBLIC
 ```
 
 ## list

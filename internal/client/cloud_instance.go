@@ -68,6 +68,12 @@ func (c *CloudInstanceClient) CreateInstance(ctx context.Context, opts *CreateIn
 		request.MountOptions = toAPIMountOptions(opts.MountOptions)
 	}
 
+	// Set AuthMode if specified (empty = use backend default)
+	if opts.AuthMode != "" {
+		authMode := opts.AuthMode
+		request.AuthMode = &authMode
+	}
+
 	response, err := c.client.StartSandboxInstanceWithContext(ctx, request)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create instance: %w", err)

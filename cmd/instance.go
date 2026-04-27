@@ -618,10 +618,16 @@ Webshell mode (--mode webshell):
 			}
 		}
 
-		// Get access token from cache or acquire new one
-		accessToken, err := GetCachedTokenOrAcquire(ctx, instanceID)
-		if err != nil {
-			return fmt.Errorf("failed to get access token: %w", err)
+		// Get access token from cache or acquire new one. When the instance
+		// is not secure (AuthMode=NONE on Cloud, or envdAccessToken empty on
+		// E2B), the data plane does not require (nor accept) a token, so we
+		// skip the token lookup entirely.
+		var accessToken string
+		if instance.Secure {
+			accessToken, err = GetCachedTokenOrAcquire(ctx, instanceID)
+			if err != nil {
+				return fmt.Errorf("failed to get access token: %w", err)
+			}
 		}
 
 		// Determine data plane domain
@@ -769,9 +775,13 @@ Webshell mode (--mode webshell):
 
 // buildWebshellURL builds webshell access URL
 // Format: https://{port}-{instance_id}.{region}.{domain}/?access_token={token}
+// When accessToken is empty (instance is not secure), the query parameter is omitted.
 func buildWebshellURL(instanceID, accessToken string) string {
 	cfg := config.Get()
 	host := fmt.Sprintf("8080-%s.%s.%s", instanceID, cfg.Region, cfg.DataPlaneDomain())
+	if accessToken == "" {
+		return fmt.Sprintf("https://%s/", host)
+	}
 	return fmt.Sprintf("https://%s/?access_token=%s", host, accessToken)
 }
 
@@ -887,7 +897,14 @@ func addInstanceCommand(parent *cobra.Command) {
 // cacheInstanceToken caches the access token for an instance.
 // For E2B backend, the token is returned during instance creation.
 // For Cloud backend, we need to call AcquireToken API.
+// When the instance is not secure, no token is required for data plane
+// access and this function is a no-op.
 func cacheInstanceToken(ctx context.Context, apiClient client.ControlPlaneClient, instance *client.Instance) error {
+	// Instances that don't require a token have nothing to cache.
+	if !instance.Secure {
+		return nil
+	}
+
 	tokenCache, err := token.NewCache()
 	if err != nil {
 		return fmt.Errorf("failed to create token cache: %w", err)

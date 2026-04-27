@@ -139,6 +139,7 @@ func (c *E2BControlPlane) CreateInstance(ctx context.Context, opts *CreateInstan
 		CreatedAt:   time.Now().Format(time.RFC3339),
 		AccessToken: result.EnvdAccessToken,
 		Domain:      fmt.Sprintf("%s.%s", c.region, c.domain),
+		Secure:      result.EnvdAccessToken != "",
 	}, nil
 }
 
@@ -175,6 +176,10 @@ func (c *E2BControlPlane) ListInstances(ctx context.Context, opts *ListInstances
 			ToolName:  s.TemplateID,
 			Status:    "running",
 			CreatedAt: s.StartedAt,
+			// Secure is unknown from the list endpoint (no envdAccessToken
+			// field). Assume secure=true; callers that need an authoritative
+			// value should fetch the instance via GetInstance.
+			Secure: true,
 		}
 	}
 
@@ -221,6 +226,7 @@ func (c *E2BControlPlane) GetInstance(ctx context.Context, id string) (*Instance
 		CreatedAt:   result.StartedAt,
 		AccessToken: result.EnvdAccessToken,
 		Domain:      fmt.Sprintf("%s.%s", c.region, c.domain),
+		Secure:      result.EnvdAccessToken != "",
 	}, nil
 }
 

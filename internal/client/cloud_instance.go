@@ -81,7 +81,7 @@ func (c *CloudInstanceClient) CreateInstance(ctx context.Context, opts *CreateIn
 	// Parse MountOptions from response
 	respMountOptions := parseAPIMountOptions(inst.MountOptions)
 
-	return &Instance{
+	result := &Instance{
 		ID:           derefString(inst.InstanceId),
 		ToolID:       derefString(inst.ToolId),
 		ToolName:     derefString(inst.ToolName),
@@ -89,7 +89,10 @@ func (c *CloudInstanceClient) CreateInstance(ctx context.Context, opts *CreateIn
 		CreatedAt:    derefString(inst.CreateTime),
 		Domain:       c.dataPlaneDomain,
 		MountOptions: respMountOptions,
-	}, nil
+		Secure:       !isAuthModeNone(inst.AuthMode),
+	}
+
+	return result, nil
 }
 
 // toAPIMountOptions converts client MountOptions to API format
@@ -236,9 +239,21 @@ func parseInstance(inst *ags.SandboxInstance, dataPlaneDomain string) Instance {
 		TimeoutSeconds: inst.TimeoutSeconds,
 		Domain:         dataPlaneDomain,
 		MountOptions:   parseAPIMountOptions(inst.MountOptions),
+		Secure:         !isAuthModeNone(inst.AuthMode),
 	}
 
 	return instance
+}
+
+// isAuthModeNone reports whether the Cloud control-plane AuthMode field
+// indicates that the sandbox data plane does not require a token.
+// A nil or empty AuthMode is treated as secure (token required), matching the
+// backend default (DEFAULT == TOKEN).
+func isAuthModeNone(authMode *string) bool {
+	if authMode == nil {
+		return false
+	}
+	return *authMode == "NONE"
 }
 
 // GetInstance returns a specific instance by ID

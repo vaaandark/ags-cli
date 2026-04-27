@@ -189,6 +189,15 @@ type Instance struct {
 	AccessToken    string        `json:"access_token,omitempty"`
 	Domain         string        `json:"domain,omitempty"`
 	MountOptions   []MountOption `json:"mount_options,omitempty"` // Mount options used by this instance
+
+	// Secure indicates whether the data plane requires a token (X-Access-Token
+	// header / webshell access_token query parameter) to access the sandbox.
+	// When false, the instance is open and no token should be sent.
+	//
+	// Backend mapping:
+	//   - Cloud backend: Secure = (AuthMode != "NONE")
+	//   - E2B backend:   Secure = (envdAccessToken != "")
+	Secure bool `json:"secure"`
 }
 
 // CreateInstanceOptions represents options for creating an instance

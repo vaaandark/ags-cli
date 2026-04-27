@@ -10,8 +10,8 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/ags v1.3.16
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.16
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/ags v1.3.87
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.87
 	golang.org/x/term v0.41.0
 )
 

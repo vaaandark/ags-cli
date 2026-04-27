@@ -4,6 +4,12 @@
 
 ## [未发布]
 
+### 新增
+- `Instance` 类型新增后端无关的 `Secure` 标识（Cloud 后端：`Secure = AuthMode != "NONE"`；E2B 后端：`Secure = envdAccessToken != ""`）；当实例不安全（无需 token）时，`ags instance login` 会跳过访问令牌的获取，并省略 `X-Access-Token` 请求头与 webshell URL 中的 `access_token` 查询参数，`ags instance create` 也不再因缓存令牌失败而报警告
+
+### 变更
+- 升级腾讯云 SDK（`tencentcloud-sdk-go/tencentcloud/ags` 与 `common`）至 v1.3.87，以获得沙箱实例新增的 `AuthMode` 字段
+
 ### 修复
 - 修复 `mobile connect` 仅显示通用错误 "tunnel process exited without ready message" 而非实际错误信息的问题；daemon 子进程现在通过 stdout 发送错误详情，使父进程能向用户展示真实错误原因
 

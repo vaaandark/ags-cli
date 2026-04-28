@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.4.0] - 2026-04-28
 
 ### Added
 - Surface a backend-agnostic `Secure` flag on the `Instance` type (Cloud: `Secure = AuthMode != "NONE"`; E2B: `Secure = envdAccessToken != ""`); `ags instance login` now skips access-token acquisition and omits the `X-Access-Token` header / webshell `access_token` query parameter when the instance is not secure, and `ags instance create` no longer fails to cache a token for such instances

@@ -2,7 +2,7 @@
 
 本项目的所有重要更改都将记录在此文件中。
 
-## [未发布]
+## [0.4.0] - 2026-04-28
 
 ### 新增
 - `Instance` 类型新增后端无关的 `Secure` 标识（Cloud 后端：`Secure = AuthMode != "NONE"`；E2B 后端：`Secure = envdAccessToken != ""`）；当实例不安全（无需 token）时，`ags instance login` 会跳过访问令牌的获取，并省略 `X-Access-Token` 请求头与 webshell URL 中的 `access_token` 查询参数，`ags instance create` 也不再因缓存令牌失败而报警告

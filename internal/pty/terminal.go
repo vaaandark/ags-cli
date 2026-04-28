@@ -81,7 +81,7 @@ func (s *Session) Connect(ctx context.Context, instanceID, user string) error {
 			},
 		},
 	})
-	startReq.Header().Set("X-Access-Token", s.accessToken)
+	setAccessToken(startReq.Header(), s.accessToken)
 	// Basic auth header selects the user inside the sandbox (same convention as the SDK)
 	startReq.Header().Set(
 		"Authorization",
@@ -273,7 +273,7 @@ func sendPTYInput(ctx context.Context, cli processconnect.ProcessClient, pid uin
 			Input: &process.ProcessInput_Pty{Pty: data},
 		},
 	})
-	req.Header().Set("X-Access-Token", accessToken)
+	setAccessToken(req.Header(), accessToken)
 	_, _ = cli.SendInput(ctx, req)
 }
 
@@ -290,8 +290,19 @@ func resizePTY(ctx context.Context, cli processconnect.ProcessClient, pid uint32
 			},
 		},
 	})
-	req.Header().Set("X-Access-Token", accessToken)
+	setAccessToken(req.Header(), accessToken)
 	_, _ = cli.Update(ctx, req)
+}
+
+// setAccessToken sets the X-Access-Token header when accessToken is non-empty.
+// A blank token means the target sandbox does not require authentication
+// (e.g. Cloud AuthMode=NONE or E2B instances without an envdAccessToken),
+// in which case the data plane does not require (and may reject) the header.
+func setAccessToken(h http.Header, accessToken string) {
+	if accessToken == "" {
+		return
+	}
+	h.Set("X-Access-Token", accessToken)
 }
 
 // termSize returns the current terminal width and height, defaulting to 220×50 on error.

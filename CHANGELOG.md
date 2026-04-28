@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Surface a backend-agnostic `Secure` flag on the `Instance` type (Cloud: `Secure = AuthMode != "NONE"`; E2B: `Secure = envdAccessToken != ""`); `ags instance login` now skips access-token acquisition and omits the `X-Access-Token` header / webshell `access_token` query parameter when the instance is not secure, and `ags instance create` no longer fails to cache a token for such instances
+- Add `--auth-mode` flag to `ags instance create` / `ags instance start` accepting `DEFAULT`, `TOKEN`, `NONE`, `PUBLIC`; cloud backend passes it through as `AuthMode`, while E2B backend translates it into the `secure` + `network.allowPublicTraffic` request fields
+
+### Changed
+- Upgrade Tencent Cloud SDK (`tencentcloud-sdk-go/tencentcloud/ags` and `common`) to v1.3.87 to pick up the new `AuthMode` field on sandbox instances
+
 ### Fixed
 - Fix `mobile connect` showing generic "tunnel process exited without ready message" instead of the actual error; daemon subprocess now sends error details via stdout so the parent process can display them to the user
 

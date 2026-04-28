@@ -2,6 +2,7 @@ package client
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -189,6 +190,52 @@ type Instance struct {
 	AccessToken    string        `json:"access_token,omitempty"`
 	Domain         string        `json:"domain,omitempty"`
 	MountOptions   []MountOption `json:"mount_options,omitempty"` // Mount options used by this instance
+
+	// Secure indicates whether the data plane requires a token (X-Access-Token
+	// header / webshell access_token query parameter) to access the sandbox.
+	// When false, the instance is open and no token should be sent.
+	//
+	// Backend mapping:
+	//   - Cloud backend: Secure = (AuthMode != "NONE")
+	//   - E2B backend:   Secure = (envdAccessToken != "")
+	Secure bool `json:"secure"`
+}
+
+// AuthMode values accepted by the control plane for sandbox instance
+// creation and returned in sandbox instance responses. They mirror the
+// Tencent Cloud API enumeration (StartSandboxInstance / SandboxInstance).
+const (
+	// AuthModeDefault falls back to the backend default, which currently
+	// means token authentication on every port (equivalent to AuthModeToken).
+	AuthModeDefault = "DEFAULT"
+	// AuthModeToken requires a token on all ports (management + application).
+	AuthModeToken = "TOKEN"
+	// AuthModeNone disables token authentication on all ports.
+	AuthModeNone = "NONE"
+	// AuthModePublic requires a token on the envd management port (49983)
+	// but leaves application ports open to unauthenticated traffic.
+	AuthModePublic = "PUBLIC"
+)
+
+// ValidAuthModes lists the AuthMode values accepted by the CLI.
+var ValidAuthModes = []string{
+	AuthModeDefault,
+	AuthModeToken,
+	AuthModeNone,
+	AuthModePublic,
+}
+
+// NormalizeAuthMode uppercases and validates an AuthMode string. An empty
+// input is returned as "" to signal "use backend default" (no value sent).
+func NormalizeAuthMode(s string) (string, error) {
+	if s == "" {
+		return "", nil
+	}
+	up := strings.ToUpper(strings.TrimSpace(s))
+	if slices.Contains(ValidAuthModes, up) {
+		return up, nil
+	}
+	return "", fmt.Errorf("invalid auth mode %q: must be one of %s", s, strings.Join(ValidAuthModes, ", "))
 }
 
 // CreateInstanceOptions represents options for creating an instance
@@ -197,6 +244,7 @@ type CreateInstanceOptions struct {
 	ToolName     string        // e.g., "code-interpreter-v1"
 	Timeout      int           // timeout in seconds
 	MountOptions []MountOption // Mount options to override tool defaults (optional)
+	AuthMode     string        // Optional DEFAULT / TOKEN / NONE / PUBLIC; empty = backend default
 }
 
 // ListInstancesOptions represents options for listing instances

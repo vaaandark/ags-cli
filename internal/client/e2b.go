@@ -112,6 +112,26 @@ func (c *E2BControlPlane) CreateInstance(ctx context.Context, opts *CreateInstan
 		"timeout":    timeout,
 	}
 
+	// Translate the unified AuthMode enum into the E2B request fields:
+	//   TOKEN   → secure=true,  network.allowPublicTraffic=false
+	//   PUBLIC  → secure=true,  network.allowPublicTraffic=true
+	//   NONE    → secure=false  (network is omitted; backend picks default)
+	//   DEFAULT (or empty) → leave both fields unset (backend default)
+	switch opts.AuthMode {
+	case AuthModeToken:
+		reqBody["secure"] = true
+		reqBody["network"] = map[string]any{"allowPublicTraffic": false}
+	case AuthModePublic:
+		reqBody["secure"] = true
+		reqBody["network"] = map[string]any{"allowPublicTraffic": true}
+	case AuthModeNone:
+		reqBody["secure"] = false
+	case "", AuthModeDefault:
+		// Use E2B backend default; do not set secure/network.
+	default:
+		return nil, fmt.Errorf("invalid auth mode %q for E2B backend", opts.AuthMode)
+	}
+
 	resp, err := c.doRequest(ctx, http.MethodPost, url, reqBody)
 	if err != nil {
 		return nil, err
@@ -126,6 +146,7 @@ func (c *E2BControlPlane) CreateInstance(ctx context.Context, opts *CreateInstan
 	var result struct {
 		SandboxID       string `json:"sandboxID"`
 		EnvdAccessToken string `json:"envdAccessToken"`
+		Secure          *bool  `json:"secure,omitempty"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
@@ -139,7 +160,19 @@ func (c *E2BControlPlane) CreateInstance(ctx context.Context, opts *CreateInstan
 		CreatedAt:   time.Now().Format(time.RFC3339),
 		AccessToken: result.EnvdAccessToken,
 		Domain:      fmt.Sprintf("%s.%s", c.region, c.domain),
+		Secure:      e2bSecure(result.Secure, result.EnvdAccessToken),
 	}, nil
+}
+
+// e2bSecure derives Instance.Secure from an E2B sandbox payload.
+// The explicit "secure" field wins when present; otherwise we fall back to
+// inferring secure=(envdAccessToken != "") for backward compatibility with
+// older backends that don't return the field.
+func e2bSecure(secure *bool, envdAccessToken string) bool {
+	if secure != nil {
+		return *secure
+	}
+	return envdAccessToken != ""
 }
 
 // ListInstances returns all sandbox instances
@@ -162,6 +195,7 @@ func (c *E2BControlPlane) ListInstances(ctx context.Context, opts *ListInstances
 		TemplateID string `json:"templateID"`
 		Alias      string `json:"alias"`
 		StartedAt  string `json:"startedAt"`
+		Secure     *bool  `json:"secure,omitempty"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&sandboxes); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
@@ -169,12 +203,21 @@ func (c *E2BControlPlane) ListInstances(ctx context.Context, opts *ListInstances
 
 	instances := make([]Instance, len(sandboxes))
 	for i, s := range sandboxes {
+		// The list endpoint doesn't return envdAccessToken. If the backend
+		// supplies "secure", use it; otherwise fall back to secure=true
+		// (token required) so callers don't silently drop auth. Consumers
+		// that need an authoritative value should fetch via GetInstance.
+		secure := true
+		if s.Secure != nil {
+			secure = *s.Secure
+		}
 		instances[i] = Instance{
 			ID:        s.SandboxID,
 			ToolID:    s.TemplateID,
 			ToolName:  s.TemplateID,
 			Status:    "running",
 			CreatedAt: s.StartedAt,
+			Secure:    secure,
 		}
 	}
 
@@ -208,6 +251,7 @@ func (c *E2BControlPlane) GetInstance(ctx context.Context, id string) (*Instance
 		StartedAt       string `json:"startedAt"`
 		State           string `json:"state"`
 		EnvdAccessToken string `json:"envdAccessToken"`
+		Secure          *bool  `json:"secure,omitempty"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
@@ -221,6 +265,7 @@ func (c *E2BControlPlane) GetInstance(ctx context.Context, id string) (*Instance
 		CreatedAt:   result.StartedAt,
 		AccessToken: result.EnvdAccessToken,
 		Domain:      fmt.Sprintf("%s.%s", c.region, c.domain),
+		Secure:      e2bSecure(result.Secure, result.EnvdAccessToken),
 	}, nil
 }
 

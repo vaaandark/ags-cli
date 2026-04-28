@@ -22,6 +22,7 @@ var (
 	instanceTimeout      int
 	instanceTime         bool
 	instanceMountOptions []string
+	instanceAuthMode     string
 
 	// list command flags
 	instanceListTool     string
@@ -50,13 +51,20 @@ Use --tool-name/-t for tool name (e2b/cloud backend) or --tool-id for tool ID (c
 Mount option format (--mount-option):
   name=<name>[,dst=<target-path>][,subpath=<sub-path>][,readonly]
 
+Auth mode (--auth-mode):
+  DEFAULT  Use backend default (currently TOKEN)
+  TOKEN    All ports require X-Access-Token
+  PUBLIC   envd management port (49983) requires token; other ports open
+  NONE     No authentication on any port
+
 Examples:
   ags instance create -t code-interpreter-v1
   ags instance create --tool-name code-interpreter-v1
   ags instance create --tool code-interpreter-v1
   ags instance create --tool-id sdt-xxxx
   ags instance create -t my-tool --timeout 600
-  ags instance create --tool-id sdt-xxxx --mount-option "name=data,dst=/workspace,subpath=user-123"`,
+  ags instance create --tool-id sdt-xxxx --mount-option "name=data,dst=/workspace,subpath=user-123"
+  ags instance create -t my-tool --auth-mode NONE`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := context.Background()
 		start := time.Now()
@@ -83,6 +91,12 @@ Examples:
 			mountOptions = append(mountOptions, *opt)
 		}
 
+		// Validate --auth-mode (empty means use backend default)
+		authMode, err := client.NormalizeAuthMode(instanceAuthMode)
+		if err != nil {
+			return fmt.Errorf("invalid --auth-mode: %w", err)
+		}
+
 		apiClient, err := client.NewControlPlaneClient(config.GetBackend())
 		if err != nil {
 			return fmt.Errorf("failed to create API client: %w", err)
@@ -93,6 +107,7 @@ Examples:
 			ToolName:     instanceTool,
 			Timeout:      instanceTimeout,
 			MountOptions: mountOptions,
+			AuthMode:     authMode,
 		}
 
 		instance, err := apiClient.CreateInstance(ctx, opts)
@@ -618,10 +633,16 @@ Webshell mode (--mode webshell):
 			}
 		}
 
-		// Get access token from cache or acquire new one
-		accessToken, err := GetCachedTokenOrAcquire(ctx, instanceID)
-		if err != nil {
-			return fmt.Errorf("failed to get access token: %w", err)
+		// Get access token from cache or acquire new one. When the instance
+		// is not secure (AuthMode=NONE on Cloud, or envdAccessToken empty on
+		// E2B), the data plane does not require (nor accept) a token, so we
+		// skip the token lookup entirely.
+		var accessToken string
+		if instance.Secure {
+			accessToken, err = GetCachedTokenOrAcquire(ctx, instanceID)
+			if err != nil {
+				return fmt.Errorf("failed to get access token: %w", err)
+			}
 		}
 
 		// Determine data plane domain
@@ -769,9 +790,13 @@ Webshell mode (--mode webshell):
 
 // buildWebshellURL builds webshell access URL
 // Format: https://{port}-{instance_id}.{region}.{domain}/?access_token={token}
+// When accessToken is empty (instance is not secure), the query parameter is omitted.
 func buildWebshellURL(instanceID, accessToken string) string {
 	cfg := config.Get()
 	host := fmt.Sprintf("8080-%s.%s.%s", instanceID, cfg.Region, cfg.DataPlaneDomain())
+	if accessToken == "" {
+		return fmt.Sprintf("https://%s/", host)
+	}
 	return fmt.Sprintf("https://%s/?access_token=%s", host, accessToken)
 }
 
@@ -801,6 +826,7 @@ func addInstanceCommand(parent *cobra.Command) {
 	createCmd.Flags().IntVar(&instanceTimeout, "timeout", 300, "Instance timeout in seconds")
 	createCmd.Flags().BoolVar(&instanceTime, "time", false, "Print elapsed time to stderr")
 	createCmd.Flags().StringArrayVar(&instanceMountOptions, "mount-option", nil, "Mount option to override tool storage config\n"+client.FormatMountOptionHelp())
+	createCmd.Flags().StringVar(&instanceAuthMode, "auth-mode", client.AuthModeDefault, "Auth mode: DEFAULT, TOKEN, NONE, PUBLIC")
 	cmd.AddCommand(createCmd)
 
 	// start is an alias for create, but shown as separate command
@@ -816,6 +842,7 @@ func addInstanceCommand(parent *cobra.Command) {
 	startCmd.Flags().IntVar(&instanceTimeout, "timeout", 300, "Instance timeout in seconds")
 	startCmd.Flags().BoolVar(&instanceTime, "time", false, "Print elapsed time to stderr")
 	startCmd.Flags().StringArrayVar(&instanceMountOptions, "mount-option", nil, "Mount option to override tool storage config\n"+client.FormatMountOptionHelp())
+	startCmd.Flags().StringVar(&instanceAuthMode, "auth-mode", client.AuthModeDefault, "Auth mode: DEFAULT, TOKEN, NONE, PUBLIC")
 	cmd.AddCommand(startCmd)
 
 	listCmd := &cobra.Command{
@@ -887,7 +914,14 @@ func addInstanceCommand(parent *cobra.Command) {
 // cacheInstanceToken caches the access token for an instance.
 // For E2B backend, the token is returned during instance creation.
 // For Cloud backend, we need to call AcquireToken API.
+// When the instance is not secure, no token is required for data plane
+// access and this function is a no-op.
 func cacheInstanceToken(ctx context.Context, apiClient client.ControlPlaneClient, instance *client.Instance) error {
+	// Instances that don't require a token have nothing to cache.
+	if !instance.Secure {
+		return nil
+	}
+
 	tokenCache, err := token.NewCache()
 	if err != nil {
 		return fmt.Errorf("failed to create token cache: %w", err)

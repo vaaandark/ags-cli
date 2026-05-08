@@ -216,6 +216,7 @@ var (
 		{Text: "--no-browser", Description: "Don't open browser automatically"},
 		{Text: "--ttyd-binary", Description: "Path to custom ttyd binary file to upload"},
 		{Text: "--user", Description: "User to run terminal as"},
+		{Text: "--skip-status-check", Description: "Skip control plane status check, connect directly via data plane"},
 		{Text: "--time", Description: "Print elapsed time to stderr"},
 	}
 

@@ -14,6 +14,9 @@
 ### 修复
 - 修复 `mobile connect` 仅显示通用错误 "tunnel process exited without ready message" 而非实际错误信息的问题；daemon 子进程现在通过 stdout 发送错误详情，使父进程能向用户展示真实错误原因
 
+### 新增
+- 为 `instance login` 命令添加 `--skip-status-check` 参数，跳过控制面状态检查直接通过数据面连接，适用于仅数据面可达的场景（需要已缓存的访问令牌）
+
 ## [0.3.1] - 2026-03-18
 
 ### 修复

@@ -14,6 +14,9 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 - Fix `mobile connect` showing generic "tunnel process exited without ready message" instead of the actual error; daemon subprocess now sends error details via stdout so the parent process can display them to the user
 
+### Added
+- Add `--skip-status-check` flag to `instance login` command to bypass control plane status check and connect directly via data plane, enabling login when only the data plane is accessible (requires cached access token)
+
 ## [0.3.1] - 2026-03-18
 
 ### Fixed

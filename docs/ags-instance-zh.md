@@ -170,10 +170,11 @@ ags i login <instance-id> [选项]
 
 | 选项 | 类型 | 默认值 | 描述 |
 |------|------|--------|------|
-| `--pty` | bool | `false` | 在当前终端中直接开启原生 PTY 会话（无需浏览器） |
+| `--mode` | string | `pty` | 登录模式："pty"（原生终端）或 "webshell"（浏览器） |
 | `--no-browser` | bool | `false` | 不自动打开浏览器（webshell 模式） |
 | `--ttyd-binary` | string | - | 要上传的自定义 ttyd 二进制文件路径（webshell 模式） |
 | `--user` | string | `user` | 运行终端的用户身份 |
+| `--skip-status-check` | bool | `false` | 跳过控制面状态检查，直接通过数据面连接（需要已缓存的 token） |
 | `--time` | bool | `false` | 显示耗时 |
 
 ### 支持的实例类型
@@ -202,6 +203,9 @@ ags i login sbi-xxxxxxxx --mode webshell --no-browser
 
 # Webshell 模式：使用自定义 ttyd 二进制文件（适用于网络受限环境）
 ags instance login sbi-xxxxxxxx --mode webshell --ttyd-binary /path/to/ttyd
+
+# 跳过控制面状态检查（纯数据面操作，需要已缓存的 token）
+ags instance login sbi-xxxxxxxx --skip-status-check
 
 # 登录并显示耗时信息
 ags instance login sbi-xxxxxxxx --time

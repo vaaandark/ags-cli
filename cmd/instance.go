@@ -33,10 +33,11 @@ var (
 	instanceListLimit    int
 
 	// login command flags
-	instanceLoginMode       string
-	instanceLoginNoBrowser  bool
-	instanceLoginTTYDBinary string
-	instanceLoginUser       string
+	instanceLoginMode           string
+	instanceLoginNoBrowser      bool
+	instanceLoginTTYDBinary     string
+	instanceLoginUser           string
+	instanceLoginSkipStatusCheck bool
 )
 
 // instanceCreateCmd represents the instance create command
@@ -589,7 +590,14 @@ Webshell mode (--mode webshell):
 
   ags instance login abc123 --mode webshell
   ags instance login abc123 --mode webshell --no-browser
-  ags instance login abc123 --mode webshell --ttyd-binary /path/to/ttyd`,
+  ags instance login abc123 --mode webshell --ttyd-binary /path/to/ttyd
+
+Use --skip-status-check to bypass the control plane status check and connect
+directly via the data plane. This is useful when the control plane is not
+accessible (e.g., internal network restrictions) but the data plane is reachable,
+and you already have a cached access token from a previous session.
+
+  ags instance login abc123 --skip-status-check`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := context.Background()
@@ -600,45 +608,62 @@ Webshell mode (--mode webshell):
 			return err
 		}
 
-		apiClient, err := client.NewControlPlaneClient(config.GetBackend())
-		if err != nil {
-			return fmt.Errorf("failed to create API client: %w", err)
-		}
+		var toolName string // used for display in webshell JSON output
+		var err error
+		var instance *client.Instance
 
-		// Get instance information
-		output.PrintInfo(fmt.Sprintf("Connecting to instance %s...", instanceID))
-		instance, err := apiClient.GetInstance(ctx, instanceID)
-		if err != nil {
-			if strings.Contains(err.Error(), "not found") {
-				return fmt.Errorf("instance %s not found. Please check the instance ID and try again", instanceID)
+		if instanceLoginSkipStatusCheck {
+			// Skip control plane check — pure data plane operation
+			output.PrintInfo(fmt.Sprintf("Skipping status check, connecting directly to instance %s...", instanceID))
+		} else {
+			var apiClient client.ControlPlaneClient
+			apiClient, err = client.NewControlPlaneClient(config.GetBackend())
+			if err != nil {
+				return fmt.Errorf("failed to create API client: %w", err)
 			}
-			if strings.Contains(err.Error(), "permission") || strings.Contains(err.Error(), "access") {
-				return fmt.Errorf("access denied to instance %s. Please check your permissions", instanceID)
-			}
-			return fmt.Errorf("failed to get instance %s: %w", instanceID, err)
-		}
 
-		// Check instance status (case-insensitive comparison)
-		status := strings.ToUpper(instance.Status)
-		if status != "RUNNING" {
-			switch status {
-			case "CREATING", "STARTING":
-				return fmt.Errorf("instance %s is still being created. Please wait for it to finish and try again", instanceID)
-			case "STOPPED", "STOPPING":
-				return fmt.Errorf("instance %s is stopped. Please start it first using 'ags instance create' or contact support", instanceID)
-			case "ERROR", "FAILED":
-				return fmt.Errorf("instance %s is in error state. Please contact support or create a new instance", instanceID)
-			default:
-				return fmt.Errorf("instance %s is not running (status: %s). Please wait for it to be ready", instanceID, instance.Status)
+			// Get instance information
+			output.PrintInfo(fmt.Sprintf("Connecting to instance %s...", instanceID))
+			instance, err = apiClient.GetInstance(ctx, instanceID)
+			if err != nil {
+				if strings.Contains(err.Error(), "not found") {
+					return fmt.Errorf("instance %s not found. Please check the instance ID and try again", instanceID)
+				}
+				if strings.Contains(err.Error(), "permission") || strings.Contains(err.Error(), "access") {
+					return fmt.Errorf("access denied to instance %s. Please check your permissions", instanceID)
+				}
+				return fmt.Errorf("failed to get instance %s: %w\n\nTip: Use --skip-status-check to bypass this check if you have a cached token", instanceID, err)
 			}
+
+			// Check instance status (case-insensitive comparison)
+			status := strings.ToUpper(instance.Status)
+			if status != "RUNNING" {
+				switch status {
+				case "CREATING", "STARTING":
+					return fmt.Errorf("instance %s is still being created. Please wait for it to finish and try again", instanceID)
+				case "STOPPED", "STOPPING":
+					return fmt.Errorf("instance %s is stopped. Please start it first using 'ags instance create' or contact support", instanceID)
+				case "ERROR", "FAILED":
+					return fmt.Errorf("instance %s is in error state. Please contact support or create a new instance", instanceID)
+				default:
+					return fmt.Errorf("instance %s is not running (status: %s). Please wait for it to be ready", instanceID, instance.Status)
+				}
+			}
+			toolName = instance.ToolName
 		}
 
 		// Get access token from cache or acquire new one. When the instance
 		// is not secure (AuthMode=NONE on Cloud, or envdAccessToken empty on
 		// E2B), the data plane does not require (nor accept) a token, so we
 		// skip the token lookup entirely.
+		// In skip-status-check mode, we don't have the instance object to check
+		// Secure, so we always attempt to use a cached token.
 		var accessToken string
-		if instance.Secure {
+		if instanceLoginSkipStatusCheck {
+			// In skip-status-check mode, only use cached token to avoid control plane calls
+			accessToken, _ = getCachedTokenOnly(instanceID)
+			// If no cached token, proceed with empty token (instance may be non-secure)
+		} else if instance.Secure {
 			accessToken, err = GetCachedTokenOrAcquire(ctx, instanceID)
 			if err != nil {
 				return fmt.Errorf("failed to get access token: %w", err)
@@ -739,7 +764,9 @@ Webshell mode (--mode webshell):
 				"message":     "Webshell is ready",
 				"instanceId":  instanceID,
 				"webshellUrl": webshellURL,
-				"toolName":    instance.ToolName,
+			}
+			if toolName != "" {
+				data["toolName"] = toolName
 			}
 			if timing != nil {
 				data["timing"] = timing
@@ -750,9 +777,11 @@ Webshell mode (--mode webshell):
 		// Print access information
 		result := []output.KeyValue{
 			{Key: "Instance", Value: instanceID},
-			{Key: "Tool", Value: instance.ToolName},
-			{Key: "Webshell URL", Value: webshellURL},
 		}
+		if toolName != "" {
+			result = append(result, output.KeyValue{Key: "Tool", Value: toolName})
+		}
+		result = append(result, output.KeyValue{Key: "Webshell URL", Value: webshellURL})
 
 		if err := f.PrintKeyValue(result); err != nil {
 			return err
@@ -905,6 +934,7 @@ func addInstanceCommand(parent *cobra.Command) {
 	loginCmd.Flags().BoolVar(&instanceLoginNoBrowser, "no-browser", false, "Don't open browser automatically (webshell mode)")
 	loginCmd.Flags().StringVar(&instanceLoginTTYDBinary, "ttyd-binary", "", "Path to custom ttyd binary file to upload (webshell mode)")
 	loginCmd.Flags().StringVar(&instanceLoginUser, "user", "", "User to run terminal as (default: \"user\")")
+	loginCmd.Flags().BoolVar(&instanceLoginSkipStatusCheck, "skip-status-check", false, "Skip control plane status check, connect directly via data plane (requires cached token)")
 	loginCmd.Flags().BoolVar(&instanceTime, "time", false, "Print elapsed time")
 	cmd.AddCommand(loginCmd)
 

@@ -134,6 +134,28 @@ func GetCachedTokenOrAcquire(ctx context.Context, instanceID string) (string, er
 	return accessToken, nil
 }
 
+// getCachedTokenOnly gets the access token from cache only, without calling the control plane API.
+// This is used when --skip-status-check is enabled to ensure pure data plane operation.
+//
+// Parameters:
+//   - instanceID: The sandbox instance ID
+//
+// Returns:
+//   - string: The cached access token
+//   - error: Error if token is not found in cache
+func getCachedTokenOnly(instanceID string) (string, error) {
+	tokenCache, err := token.NewCache()
+	if err != nil {
+		return "", fmt.Errorf("failed to create token cache: %w", err)
+	}
+
+	if cachedToken, found := tokenCache.Get(instanceID); found {
+		return cachedToken, nil
+	}
+
+	return "", fmt.Errorf("no cached token found for instance %s", instanceID)
+}
+
 // ConnectSandboxWithCache connects to a sandbox using cached token, falling back to SDK Connect if needed.
 // This is the recommended way to connect to an existing sandbox instance.
 //

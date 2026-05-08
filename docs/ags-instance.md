@@ -171,10 +171,11 @@ Two modes are available:
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--pty` | bool | `false` | Connect a native PTY session directly in the current terminal (no browser required) |
+| `--mode` | string | `pty` | Login mode: "pty" (native terminal) or "webshell" (browser-based) |
 | `--no-browser` | bool | `false` | Don't open browser automatically (webshell mode) |
 | `--ttyd-binary` | string | - | Path to custom ttyd binary file to upload (webshell mode) |
 | `--user` | string | `user` | User to run terminal as |
+| `--skip-status-check` | bool | `false` | Skip control plane status check, connect directly via data plane (requires cached token) |
 | `--time` | bool | `false` | Print elapsed time |
 
 ### Supported Instance Types
@@ -189,20 +190,23 @@ Two modes are available:
 ### Examples
 
 ```bash
-# PTY mode: direct terminal session (recommended)
-ags instance login sbi-xxxxxxxx --pty
-
-# PTY mode with specific user
-ags instance login sbi-xxxxxxxx --pty --user root
-
-# Webshell mode: open in browser (default)
+# PTY mode: direct terminal session (recommended, default)
 ags instance login sbi-xxxxxxxx
 
+# PTY mode with specific user
+ags instance login sbi-xxxxxxxx --user root
+
+# Webshell mode: open in browser
+ags instance login sbi-xxxxxxxx --mode webshell
+
 # Webshell mode: don't open browser (manual URL access)
-ags i login sbi-xxxxxxxx --no-browser
+ags i login sbi-xxxxxxxx --mode webshell --no-browser
 
 # Webshell mode: custom ttyd binary (for network-restricted environments)
-ags instance login sbi-xxxxxxxx --ttyd-binary /path/to/ttyd
+ags instance login sbi-xxxxxxxx --mode webshell --ttyd-binary /path/to/ttyd
+
+# Skip control plane status check (pure data plane, requires cached token)
+ags instance login sbi-xxxxxxxx --skip-status-check
 
 # Login with timing information
 ags instance login sbi-xxxxxxxx --time
